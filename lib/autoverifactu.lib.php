@@ -217,13 +217,8 @@ function autoverifactuDeclarationRenderedTemplate()
             <p><b><?php echo $langs->trans('DeclarationLinksLabel'); ?></b></p>
             <ul>
                 <li>
-                <a href="https://gitlab.com/codeccoop/dolibarr/autoverifactu"
-                    >https://gitlab.com/codeccoop/dolibarr/autoverifactu</a
-                >
-                </li>
-                <li>
-                <a href="https://github.com/codeccoop/dolibarr-autoverifactu"
-                    >https://github.com/codeccoop/dolibarr-autoverifactu</a
+                <a href="https://github.com/codeccoop/autoverifactu"
+                    >https://github.com/codeccoop/autoverifactu</a
                 >
                 </li>
             </ul>
