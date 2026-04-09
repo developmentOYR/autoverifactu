@@ -77,6 +77,7 @@ RecordCreationFail = La creació del registre de factura Veri*Factu ha fallat
 ValidatedNotEditable = Les facutres validades no són editables
 ValidatedNotDeletable = Les facutres validades no es poden esborar
 ValidatedNotModifiable = Les factures validades no es poden modificar
+MaxInvoiceLines = <b>Veri*Factu no permet factures amb més de 12 línies</b>. Agrupa línies per concepte o codi CNAE, o emet factures parcials si l'agrupació no és possible.
 
 #
 # Buttons

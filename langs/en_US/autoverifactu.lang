@@ -77,6 +77,7 @@ RecordCreationFail = Veri*Factu invoice record creation has failed
 ValidatedNotEditable = Validated invoices are not editables
 ValidatedNotDeletable = Validated invoices can't be deleted
 ValidatedNotModifiable = Validated invoices can't be modified
+MaxInvoiceLines = Veri*Factu does not allow invoices with more than 12 lines. Try to merge lines by concept or CNAE code, or emit partial invoices if line merging is not possible.
 
 #
 # Buttons

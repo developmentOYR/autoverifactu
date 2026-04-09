@@ -77,6 +77,7 @@ RecordCreationFail = La creación del registro de factura Veri*Factu ha fallado
 ValidatedNotEditable = Las facturas validadas no son editables
 ValidatedNotDeletable = Las facturas validadas no se pueden borrar
 ValidatedNotModifiable = Las facturas validadas no se pueden modificar
+MaxInvoiceLines = Veri*Factu no permite facturas con más de 12 líneas. Agrupa líneas por concepto o código CNAE, o emite facturas parciales en caso de no ser posible la agrupación.
 
 #
 # Buttons

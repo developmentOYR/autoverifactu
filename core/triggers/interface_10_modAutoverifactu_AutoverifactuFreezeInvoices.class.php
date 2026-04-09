@@ -164,6 +164,18 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
                 }
 
                 break;
+            case 'LINEBILL_INSERT':
+                global $db;
+                $facture = new Facture($db);
+                $facture->fetch($object->fk_facture);
+                $facture->fetch_lines();
+
+                if (is_array($facture->lines) && count($facture->lines) > 12) {
+                    dol_syslog('Veri*Factu bans invoices with more than 12 lines');
+                    $this->errors[] = $langs->trans('MaxInvoiceLines');
+                    return -1;
+                }
+                break;
             case 'USER_LOGOUT':
                 autoverifactu_set_const('AUTOVERIFACTU_DISMISSED_NOTICES', '');
                 break;
