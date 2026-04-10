@@ -176,6 +176,13 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
                     return -1;
                 }
                 break;
+            case 'LINEPROPAL_INSERT':
+            case 'LINEORDER_INSERT':
+            case 'LINESUPPLIER_PROPOSAL_INSERT':
+            case 'LINECONTRACT_INSERT':
+            // case 'LINEFICHINTER_CREATE':
+                // TODO: Show warnings for more than 12 lines!
+                break;
             case 'USER_LOGOUT':
                 autoverifactu_set_const('AUTOVERIFACTU_DISMISSED_NOTICES', '');
                 break;
