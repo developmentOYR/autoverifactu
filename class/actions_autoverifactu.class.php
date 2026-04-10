@@ -390,6 +390,24 @@ class ActionsAutoverifactu extends CommonHookActions
                     $this->resprints = $button;
                     return 1;
                 }
+
+                $object->fetch_lines();
+
+                if (count($object->lines) > 12) {
+                    $label = $langs->trans('MaxInvoiceLines');
+                    $button = dolGetButtonAction(
+                        $label,
+                        $parameters['html'],
+                        $parameters['actionType'],
+                        '',
+                        $parameters['id'],
+                        0,
+                        $parameters['params']
+                    );
+
+                    $this->resprints = $button;
+                    return 1;
+                }
             }
         }
     }

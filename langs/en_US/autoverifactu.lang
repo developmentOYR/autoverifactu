@@ -85,7 +85,7 @@ MaxInvoiceLines = Veri*Factu does not allow invoices with more than 12 lines. Tr
 CheckIntegrity = Check Veri*Factu integrity
 DisabledBy = Disabled by Veri*Factu
 UpdateDisabledBy = Update disabled by Veri*Factu
-ThirpartyIdProfRequired = Veri*Factu requires invoice third parties to have a valid professional ID
+ThirdpartyIdProfRequired = Veri*Factu requires invoice third parties to have a valid professional ID
 
 #
 # Autodeclaration page

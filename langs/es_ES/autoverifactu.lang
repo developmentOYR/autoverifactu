@@ -85,7 +85,7 @@ MaxInvoiceLines = Veri*Factu no permite facturas con más de 12 líneas. Agrupa 
 CheckIntegrity = Comprueba la integridad Veri*Factu
 DisabledBy = Deshabilitado por Veri*Factu
 UpdateDisabledBy = Actualización deshabilitada por Veri*Factu
-ThirpartyIdProfRequired = Veri*Factu requiere que los destinatarios de las facturas dispongan de un NIF/CIF válido 
+ThirdpartyIdProfRequired = Veri*Factu requiere que los destinatarios de las facturas dispongan de un NIF/CIF válido 
 
 #
 # Autodeclaration page
