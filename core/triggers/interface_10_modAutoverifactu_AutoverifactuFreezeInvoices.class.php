@@ -149,21 +149,21 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
                         while ($sourceLines >= 0) {
                             $siblingId = $object->createFromCurrent($user);
                             if ($siblingId < 0) {
-                                dol_syslog('Unable to create a copy of the invoice in the split invoices loop');
+                                dol_syslog('Unable to create a copy of the invoice in the split invoices loop', LOG_ERR);
                                 $this->errors[] = $langs->trans('SplitInvoiceError');
                                 return $siblingId;
                             }
 
                             $result = $object->add_object_linked('facture', $siblingId);
                             if ($result < 0) {
-                                dol_syslog('Unable to link the partial invoice to the source invoice');
+                                dol_syslog('Unable to link the partial invoice to the source invoice', LOG_ERR);
                                 $this->errors[] = $langs->trans('SplitInvoiceError');
                                 return $result;
                             }
 
                             $result = $sourceObject->add_object_linked('facture', $siblingId);
                             if ($result < 0) {
-                                dol_syslog('Unable to link the partial invoice to the source entity');
+                                dol_syslog('Unable to link the partial invoice to the source entity', LOG_ERR);
                                 $this->errors[] = $langs->trans('SplitInvoiceError');
                                 return $result;
                             }
@@ -185,7 +185,7 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
 
                 $result = autoverifactuRegisterInvoice($object, $action);
                 if ($result < 0) {
-                    dol_syslog('Error while sending a cancel record to the Veri*Factu API');
+                    dol_syslog('Error while sending a cancel record to the Veri*Factu API', LOG_ERR);
                     $this->errors[] = $langs->trans('CancelRecordFail');
                 }
 
@@ -194,7 +194,7 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
             // case 'DON_VALIDATE':
                 $object->fetch_lines();
                 if (is_array($object->lines) && count($object->lines) > 12) {
-                    dol_syslog('Veri*Factu bans invoices with more than 12 lines');
+                    dol_syslog('Veri*Factu bans invoices with more than 12 lines', LOG_INFO);
                     $this->errors[] = $langs->trans('MaxInvoiceLinesError');
                     return -1;
                 }
@@ -209,7 +209,7 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
             case 'BILL_UNVALIDATE':
             case 'BILL_UNPAYED':
                 if ($object->type <= Facture::TYPE_DEPOSIT) {
-                    dol_syslog('Veri*Factu disables invoice unvalidations');
+                    dol_syslog('Veri*Factu disables invoice unvalidations', LOG_INFO);
                     $this->errors[] = $langs->trans('ValidatedNotEditable');
                     return -1;
                 }
@@ -221,7 +221,7 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
                     $object->status != Facture::STATUS_DRAFT
                     && $object->type <= Facture::TYPE_DEPOSIT
                 ) {
-                    dol_syslog('Veri*Factu disables validated invoices removals');
+                    dol_syslog('Veri*Factu disables validated invoices removals', LOG_INFO);
                     $this->errors[] = $langs->trans('ValidatedNotDeletable');
                     return -1;
                 }
@@ -236,7 +236,7 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
                     $object->status != Facture::STATUS_DRAFT
                     && $object->type <= Facture::TYPE_DEPOSIT
                 ) {
-                    dol_syslog('Veri*Factu disables validated invoices edits');
+                    dol_syslog('Veri*Factu disables validated invoices edits', LOG_INFO);
                     $this->errors[] = $langs->trans('ValidatedNotModifiable');
                     return -1;
                 }
@@ -258,7 +258,7 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
                     if (isset($context->splitInvoice) && $context->splitInvoice) {
                         $result = $facture->fetchObjectLinked();
                         if ($result < 0) {
-                            dol_syslog('Error while loading partial invoices relations');
+                            dol_syslog('Error while loading partial invoices relations', LOG_ERR);
                             $this->errors[] = $langs->trans('FetchSplitInvoicesError');
                             return $result;
                         }
@@ -273,14 +273,14 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
                         }
 
                         if (!isset($linkedInvoice)) {
-                            dol_syslog('Error while loading partial invoices relations');
+                            dol_syslog('Error while loading partial invoices relations', LOG_ERR);
                             $this->errors[] = $langs->trans('MaxInvoiceLinesError');
                             return -1;
                         }
 
                         $result = $object->delete(null, 1);
                         if ($result < 0) {
-                            dol_syslog('Error while shifting lines from split partial invoice');
+                            dol_syslog('Error while shifting lines from split partial invoice', LOG_ERR);
                             $this->errors[] = $langs->trans('SplitInvoiceLinesError');
                             return -1;
                         }
@@ -288,14 +288,14 @@ class InterfaceAutoverifactuFreezeInvoices extends DolibarrTriggers
                         $object->fk_facture = $linkedInvoice->id;
                         $result = $object->insert($user, 1);
                         if ($result < 0) {
-                            dol_syslog('Error while shifting lines from a split partial invoice');
+                            dol_syslog('Error while shifting lines from a split partial invoice', LOG_ERR);
                             $this->errors[] = $langs->trans('SplitInvoiceLinesError');
                             return -1;
                         }
 
                         $linkedInvoice->update_price(1, 'auto', 0, $mysoc);
                     } else {
-                        dol_syslog('Veri*Factu bans invoices with more than 12 lines');
+                        dol_syslog('Veri*Factu bans invoices with more than 12 lines', LOG_INFO);
                         setEventMessage($langs->trans('MaxInvoiceLinesWarn'), 'warnings');
                     }
                 }
