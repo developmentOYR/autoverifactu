@@ -93,6 +93,7 @@ CheckIntegrity = Comprova la integritat Veri*Factu
 DisabledBy = Deshabilitat per Veri*Factu
 UpdateDisabledBy = Actualització deshabilitada per Veri*Factu
 ThirdpartyIdProfRequired = Veri*Factu requereix que els destinataris de les factures disposin d'un NIF/CIF vàlid 
+MaxInvoiceLines = Veri*Factu no permet factures amb més de 12 línies
 
 #
 # Autodeclaration page
