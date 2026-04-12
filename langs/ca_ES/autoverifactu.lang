@@ -80,7 +80,11 @@ RecordCreationFail = La creació del registre de factura Veri*Factu ha fallat
 ValidatedNotEditable = Les facutres validades no són editables
 ValidatedNotDeletable = Les facutres validades no es poden esborar
 ValidatedNotModifiable = Les factures validades no es poden modificar
-MaxInvoiceLines = <b>Veri*Factu no permet factures amb més de 12 línies</b>. Agrupa línies per concepte o codi CNAE, o emet factures parcials si l'agrupació no és possible.
+SplitInvoiceError = S'ha produït un error al fraccionar una factura amb més de 12 línies en múltiples factures parcials relacionades
+FetchSplitInvoicesError = S'ha produït un error al carregar la relació de factures parcials derivades del fraccionament d'una factura amb més de 12 línies
+MaxInvoiceLinesError = <b>Veri*Factu no permet factures amb més de 12 línies</b>. Agrupa línies per concepte o codi CNAE, o emet factures parcials si l'agrupació no és possible
+MaxInvoiceLinesWarn = <b>Veri*Factu no permet factures amb més de 12 línies. Una factura amb més de 12 línies no podrà ser validada.</b> Agrupa línies per concepte o codi CNAE, o emet factures parcials si l'agrupació no és possible
+MaxEntityLinesWarn = <b>Veri*Factu no permet factures amb més de 12 línies.</b> Les factures generades a partir d'aquesta document no podran ser validades sense aplicar-hi una agrupació de les línies de factura.
 
 #
 # Buttons
