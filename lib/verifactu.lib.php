@@ -26,7 +26,7 @@
 require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php';
 
-require_once __DIR__ . '/validation.lib.php';
+
 
 /* Veri*Factu API URLs */
 
@@ -280,11 +280,7 @@ function autoverifactuSendInvoice($invoice, $action, &$xml)
         'idprof1' => $mysoc->idprof1,
     );
     
-    $issuerIsValid = autoverifactuValidateIssuer($issuer);
 
-    if (!$issuerIsValid) {
-        throw new Exception('Inconsistent issuer data');
-    }
     $envelope = autoverifactuSoapEnvelope(
         $record,
         $issuer
@@ -923,6 +919,16 @@ function autoverifactuLinesToBreakdown($invoice)
 
                     if( $details->regimeType =="18"){
                         $details->tax_type=$line->localtax1_type;
+                                         /* 
+                        ? No se si validar que el recargo de eguivalencia en este tercero esta activo,
+                        ? ya que estamos eligiendo la opcion de recargo de equivalencia con Operación Sujeta y No exenta
+                        if (empty($invoice->thirdparty)) {
+                            $invoice->fetch_thirdparty();
+                        }
+                        $sujeto_a_re = $invoice->thirdparty->localtax1_assuj;
+                        if($sujeto_a_re == 0){
+                            retornar error
+                        }*/
                         $details->EquivalenceSurchargeType =number_format((float) $line->localtax1_tx, 2, '.', '') ;
                         $details->EquivalenceSurcharge=number_format((float) $line->total_localtax1, 2, '.', '');
                     }
@@ -956,6 +962,8 @@ function autoverifactuLinesToBreakdown($invoice)
                     $details->taxRate = number_format((float) $line->tva_tx, 2, '.', '');
                     $details->baseAmount = number_format((float) $line->total_ht, 2, '.', '');
                     $details->taxAmount = number_format((float) $line->total_tva, 2, '.', '');
+                    $details->EquivalenceSurchargeType =number_format((float) $line->localtax1_tx, 2, '.', '') ;
+                    $details->EquivalenceSurcharge=number_format((float) $line->total_localtax1, 2, '.', '');
                     $breakdown[] = $details; 
                 break;  
             }           

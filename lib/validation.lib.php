@@ -33,7 +33,7 @@ require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php';
 require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
 
 require_once __DIR__ . '/verifactu.lib.php';
-require_once __DIR__ . '/validate.lib.php';
+
 
 
 
@@ -287,6 +287,8 @@ function autoverifactuRecordFromLog($blockedlog, $recordType = 'alta')
         $line->tva_tx = $linedata->tva_tx;
         $line->total_ht = $linedata->total_ht;
         $line->total_tva = $linedata->total_tva;
+        $line->localtax1_tx = $linedata->localtax1_tx;
+        $line->total_localtax1 = $linedata->total_localtax1;
         $line->array_options["options_verifactu_Tax_Type"] = "validate";
         $lines[] = $line;
     }
@@ -568,13 +570,7 @@ function autoverifactuValidateValuesRecord($record){
         return 0;
     }
 
-    for ($i=0; $i < count($record->recipients); $i++) { 
-       $isValidNif=autoverifactuValidateNifName($record->recipients[$i]->nif,$record->recipients[$i]->name);
-   
-       if(!$isValidNif){
-            return 0;
-       }
-    } 
+
 
   
     if($record->correctiveType){
@@ -673,24 +669,239 @@ function autoverifactuValidateValuesRecord($record){
 }
 
 
+/*
+* Funciones auxiliares para validación de datos de factura.
+*/
 
 /**
- * Validates the issuer data for a Veri*Factu record.
- *
- * @param array $issuer The issuer data to validate.
- *
- * @return int 1 if valid, 0 otherwise.
- */
-function autoverifactuValidateIssuer($issuer){
-    if (!$issuer || !$issuer['idprof1'] || !$issuer['name']) {
+* Valida si es alta o anulacion.
+*
+* @param  string $type facture.
+*
+* @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateTypeInvoice($type){
+    return ($type === 'alta' || $type=== 'anulacion');
+}
+/**
+* Valida si es una fecha 
+*
+* @param  string $date 
+* @param  boolean en caso de true tiene que ser una fecha en caso de false puede
+* ser una fecha o estar "" o null
+* @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateDate($date,$require){
+    if(!$require && $date===""){
+        return 1;
+    }
+    $d = DateTime::createFromFormat('d-m-y', $date);
+    return $d && $d->format('d-m-Y') === $date;
+}
+/**
+* Valida el tipo de especificación de factura
+*
+* @param  string $type especificación de factura (L2).
+*
+* @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateVerifactuInvoice($type){
+    return (
+        $type ==="F1" ||
+        $type ==="F2" || 
+        $type ==="F3" || 
+        $type ==="R1" || 
+        $type ==="R2" || 
+        $type ==="R3" || 
+        $type ==="R4" || 
+        $type ==="R5" );
+}
+
+/**
+* Valida el tipo de especificación de factura rectificativa
+*
+* @param  string $type especificación de factura (L2).
+* @param  boolean obliagtorio.
+*
+* @return boolean 1 correct or 0 incorrect
+*/
+function  autoverifactuValidateVerifactuInvoiceRectificative ($type,$requerido){
+    if(!$requerido && $type ===''){
+        return 1;
+    }
+    return (
+        $type ==="R1" || 
+        $type ==="R2" || 
+        $type ==="R3" || 
+        $type ==="R4" || 
+        $type ==="R5" );
+}
+/**
+* Valida de tipo alfanumerico.
+*
+* @param  string cadena facture.
+* @param  int  numero de caracteres
+*
+* @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateAlphaNumber($string, $length) {
+    $actualLength = mb_strlen($string, 'UTF-8');
+    if ($actualLength > (int)$length || $actualLength === 0) {
         return 0;
     }
-
-    $isValidNifName=autoverifactuValidateNifName($issuer['idprof1'],$issuer['name'] );
-
-    if(!$isValidNifName){
+    $pattern = "/^[a-zA-Z0-9ñÑáéíóúÁÉÍÓÚüÜ ]+$/u";
+    if (!preg_match($pattern, $string)) {
         return 0;
     }
-
     return 1;
 }
+
+/**
+* Valida de tipo alfanumerico + guion para la ref.
+*
+* @param  string cadena facture.
+* @param  int  numero de caracteres
+*
+* @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateAlphaNumberScript($string, $length) {
+    $actualLength = mb_strlen($string, 'UTF-8');
+    if ($actualLength > (int)$length || $actualLength === 0) {
+        return 0;
+    }
+    $pattern = "/^[a-zA-Z0-9ñÑáéíóúÁÉÍÓÚüÜ\- ]+$/u";
+    if (!preg_match($pattern, $string)) {
+        return 0;
+    }
+    return 1;
+}
+
+/**
+* Valida de tipo number decimal (numberCount,numberDecimal).
+*@param  float  number validate
+* @param  int  numberCount  epresenta el número total de dígitos
+*@param  int  numberDecimal Representa cuántos de esos numberCount dígitos están reservados para la parte decimal
+* @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateNumber($number,$numberCount,$numberDecimal){
+    if (!is_numeric($number)) {
+        return 0;
+    }
+    $absoluteNumber = ltrim($number, '-');
+    $parts = explode('.', $absoluteNumber);
+    $integers = $parts[0];
+    $decimals = isset($parts[1]) ? $parts[1] : '';
+    $maxIntegersAllowed = $numberCount - $numberDecimal;
+    $actualIntegersCount = strlen($integers);
+    $actualDecimalsCount = strlen($decimals);
+    if ($actualIntegersCount > $maxIntegersAllowed) {
+        return 0;
+    }
+    if ($actualDecimalsCount > $numberDecimal) {
+        return 0;
+    }
+    if (($actualIntegersCount + $actualDecimalsCount) > $numberCount) {
+        return 0;
+    }
+    return 1;
+}
+
+/** 
+ * Verifica que el tipo de impuesto tiene un valor correcto
+ * @param string tipo de impuesto
+ * @param  boolean obligatorio.
+ * @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateTaxType($taxType){
+    return ($taxType==='01' ||
+            $taxType==='02' ||
+            $taxType==='03' ||
+            $taxType==='05' 
+            ); 
+}
+
+/** 
+ * Verifica que el tipo de regimen tiene un valor correcto
+ * @param string tipo de regimen 
+ * @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateRegimeTypeIva($regimeType){
+   return ($regimeType==='01' ||
+            $regimeType==='02' ||
+            $regimeType==='03' ||
+            $regimeType==='04' ||
+            $regimeType==='05' ||
+            $regimeType==='06' ||
+            $regimeType==='07' ||
+            $regimeType==='08' ||
+            $regimeType==='09' ||
+            $regimeType==='10' ||
+            $regimeType==='11' ||
+            $regimeType==='14' ||
+            $regimeType==='15' ||
+            $regimeType==='17' ||
+            $regimeType==='18' ||
+            $regimeType==='19' ||
+            $regimeType==='20' 
+            ); 
+}
+
+/** 
+ * Verifica que el tipo de regimen tiene un valor correcto
+ * @param string tipo de regimen 
+ * @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateRegimeTypeOther($regimeType){
+    return ($regimeType==='01' ||
+            $regimeType==='02' ||
+            $regimeType==='03' ||
+            $regimeType==='04' ||
+            $regimeType==='05' ||
+            $regimeType==='06' ||
+            $regimeType==='07' ||
+            $regimeType==='08' ||
+            $regimeType==='09' ||
+            $regimeType==='10' ||
+            $regimeType==='11' ||
+            $regimeType==='14' ||
+            $regimeType==='15' ||
+            $regimeType==='17' ||
+            $regimeType==='18' ||
+            $regimeType==='19' 
+            ); 
+}
+
+/** 
+ * Verifica que el tipo de operacion tiene un valor correcto
+ * @param string tipo de operacion 
+ * @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateOperationType($operationType){
+     return ($operationType==='S1' ||
+            $operationType==='S2' ||
+            $operationType==='N1' ||
+            $operationType==='N2' ||
+            $operationType==='validate'
+            );
+}
+
+/** 
+ * Verifica que el codigo de error tiene un valor correcto
+ * @param string tipo codigo de error 
+ * @return boolean 1 correct or 0 incorrect
+*/
+function autoverifactuValidateExemptionCode($errorCode){
+
+     return ($errorCode==='E1' ||
+            $errorCode==='E2' ||
+            $errorCode==='E3' ||
+            $errorCode==='E4' ||
+            $errorCode==='E5' ||
+            $errorCode==='E6'||
+            $errorCode==='0' ||//en caso de que no haya exención
+            $errorCode==null//en caso de que no haya exención
+            );
+}
+
+
+
