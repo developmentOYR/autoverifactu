@@ -386,24 +386,26 @@ function autoverifactuEnabled()
  * Performs record data validation.
  *
  * @param  stdClass $record Target record.
- *
+ * @param string &$errorMsg Parameter by reference to store the error message.
  * @return int              0 if validatio fail, 1 if succeed
  */
-function autoverifactuValidateRecord($record)
+function autoverifactuValidateRecord($record, &$errorMsg = '')
 {
 
     //validacion de todos los datos de la factura
-    $isCorrect=autoverifactuValidateValuesRecord($record);
+    $isCorrect=autoverifactuValidateValuesRecord($record,$errorMsg);
 
     if(!$isCorrect){
         return 0;
     }
     //validamos que el total de la factura coincida con el total calculado
     if($record->factureTotalAmount!==$record->factureTtc){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateTotalAmountANDFactureTtc";
         return 0;
     }
 
     if (!isset($record->breakdown, $record->totalTaxAmount, $record->totalAmount)) {
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateExistBreakdownTotalTaxAmountTotalAmount";
         return 0;
     }
 
@@ -412,33 +414,41 @@ function autoverifactuValidateRecord($record)
         && count($record->recipients)
     ) {
         // If is simplified, it should not have recipients.
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateIsSimplifiedNotRecipients";
         return 0;
     }
 
     $isCorrective = preg_match('/R[0-5]/', $record->invoiceType);
     if ($isCorrective && !$record->correctiveType) {
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateCorrectiveIsNotCorrectiveType";
         return 0;
     } elseif (!$isCorrective && $record->correctiveType) {
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateIsNotCorrectiveCorrectiveType";
         return 0;
     } elseif (!$isCorrective && count($record->correctedInvoices)) {
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateIsNotCorrectiveCountCorrectiveInvoices";
         return 0;
     }
 
     if ($record->correctiveType === 'S') {
         // If its corrective by diferrence it should have base and tax amounts.
         if (!$record->correctedBaseAmount || !$record->correctedTaxAmount) {
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateIsCorrectiveDiferenceBAseTaxAmounts";
             return 0;
         }
     } else {
         // If is corrective by substitution, it shouldn't.
         if ($record->correctedBaseAmount || $record->correctedTaxAmount) {
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateIsCorrectiveSustitutionTaxAmountBaseAmount";
             return 0;
         }
     }
 
     if ($record->invoiceType === 'F3' && count($record->replacedInvoices)) {
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateIsF3ReplaceInvoices";
         return 0;
     } elseif ($record->invoiceType !== 'F3' && count($record->replacedInvoices)) {
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateIsNotF3ReplaceInvoices";
         return 0;
     }
 
@@ -446,6 +456,7 @@ function autoverifactuValidateRecord($record)
     $expectedBase = 0;
     foreach ($record->breakdown as $details) {
         if (!isset($details->taxAmount, $details->baseAmount, $details->taxRate)) {
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateTaxAmountBaseAmountTaxRate";
             return 0;
         }
 
@@ -460,6 +471,7 @@ function autoverifactuValidateRecord($record)
         }
 
         if (!$validTaxAmount) {
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateTaxAmount";
             return 0;
         }
 
@@ -480,7 +492,12 @@ function autoverifactuValidateRecord($record)
         }
     }
 
-    return (int) $isTotalValid;
+    if(!(int) $isTotalValid){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateTotalValid";
+        return 0;
+    }
+
+    return 1;
 }
 
 /**
@@ -530,15 +547,17 @@ function autoverifactuIsPosInvoice($invoice)
  *
  * @return int              0 if validatio fail, 1 if succeed
  */
-function autoverifactuValidateValuesRecord($record){
+function autoverifactuValidateValuesRecord($record, &$errorMsg = '' ){
 
     $isValidType =autoverifactuValidateTypeInvoice($record->type);
     if(!$isValidType){
+       $errorMsg="AUTOVERIFACTU_ERROR_RecordType";
         return 0;
     }
     $isValidDateOperation=autoverifactuValidateDate($record->dateOperation,false);
     
     if(!$isValidDateOperation){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateDateOperation";
         return 0;
     }
 
@@ -546,27 +565,32 @@ function autoverifactuValidateValuesRecord($record){
     $isValidVerifactuInvoice=autoverifactuValidateVerifactuInvoice($record->invoiceType);
       
     if(!$isValidVerifactuInvoice){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateInvoiceType";
         return 0;
     }
 
     $isValidDescription=autoverifactuValidateAlphaNumber($record->description,500);
     if(!$isValidDescription){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateDescription";
         return 0;
     }
   
 
     $isValidRef=autoverifactuValidateAlphaNumberScript($record->invoiceId->invoiceNumber,60);
     if(!$isValidRef){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateInvoiceNumber";
         return 0;
     }
 
-    $isValidTotalAmount=autoverifactuValidateNumber($record->factureTtc,12,2);
+    $isValidTotalAmount=autoverifactuValidateNumber($record->factureTotalAmount,12,2);
     if(!$isValidTotalAmount){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateFactureTotalAmount";
         return 0;
     }
 
     $isValidTtc=autoverifactuValidateNumber($record->factureTtc,12,2);
     if(!$isValidTtc){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateFactureTtc";
         return 0;
     }
 
@@ -576,6 +600,7 @@ function autoverifactuValidateValuesRecord($record){
     if($record->correctiveType){
         $isValidCorrectiveType=autoverifactuValidateVerifactuInvoiceRectificative($record->correctiveType,false);
         if(!$isValidCorrectiveType){
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateCorrectiveType";
             return 0;
         } 
     }
@@ -587,12 +612,14 @@ function autoverifactuValidateValuesRecord($record){
     if($record->correctedBaseAmount){
         $isValidCorrectedBaseAmount=autoverifactuValidateNumber($record->correctedBaseAmount,12,2);
         if(!$isValidCorrectedBaseAmount){
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateCorrectedBaseAmount";
             return 0;
         } 
     }
     if($record->correctedTaxAmount){
         $isValidCorrectedTaxAmount=autoverifactuValidateNumber($record->correctedTaxAmount,12,2);
         if(!$isValidCorrectedTaxAmount){
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateCorrectedTaxAmount";
             return 0;
         } 
     }
@@ -607,60 +634,72 @@ function autoverifactuValidateValuesRecord($record){
 
         $isValidTotalTaxType=autoverifactuValidateTaxType($record->breakdown[0]->taxType);
         if(!$isValidTotalTaxType){
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateTaxType";
             return 0;
         } 
         if($record->breakdown[0]->taxType === '01'){
             $isValidRegimeType=autoverifactuValidateRegimeTypeIva($record->breakdown[0]->regimeType);
             if(!$isValidRegimeType){
+                $errorMsg="AUTOVERIFACTU_ERROR_ValidateRegimeType";
                 return 0;
             } 
         }else{
             $isValidRegimeType=autoverifactuValidateRegimeTypeOther($record->breakdown[0]->regimeType);
             if(!$isValidRegimeType){
+                $errorMsg="AUTOVERIFACTU_ERROR_ValidateRegimeType";
                 return 0;
             } 
         }
 
         $isValidOperationType=autoverifactuValidateOperationType($record->breakdown[0]->operationType);
         if(!$isValidOperationType){
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateOperationType";
             return 0;
         } 
 
         $isValidTotalTaxRate=autoverifactuValidateNumber($record->breakdown[0]->taxRate,4,2);
         if(!$isValidTotalTaxRate){
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateTaxRate";
             return 0;
         } 
 
         $isValidBaseAmount=autoverifactuValidateNumber($record->breakdown[0]->baseAmount,12,2);
         if(!$isValidBaseAmount){
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateBaseAmount";
             return 0;
         } 
 
         $isValidTaxAmount=autoverifactuValidateNumber($record->breakdown[0]->taxAmount,12,2);
         if(!$isValidTaxAmount){
+            $errorMsg="AUTOVERIFACTU_ERROR_ValidateTaxAmount";
             return 0;
         } 
 
-        if(isset($record->breakdown[0]->exemptionCode)){
-            $isValidTexemptionCode=autoverifactuValidateExemptionCode($record->breakdown[0]->exemptionCode,12,2);
+        if(isset($record->breakdown[0]->exeptionCode)){
+         
+            $isValidTExeptionCode=autoverifactuValidateexeptionCode($record->breakdown[0]->exeptionCode,12,2);
+            if(!$isValidTExeptionCode){
+                $errorMsg="AUTOVERIFACTU_ERROR_ValidateExeptionCode";
+                return 0;
+            } 
         }
         
-        return 1;
 
-        if(!$isValidTexemptionCode){
-            return 0;
-        } 
-  
+        
+
+        return 1;
     }
 
 
     $isValidTotalTaxAmount=autoverifactuValidateNumber($record->totalTaxAmount,12,2);
     if(!$isValidTotalTaxAmount){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateTotalTaxAmount";
         return 0;
     }
 
     $isValidTotalAmount=autoverifactuValidateNumber($record->totalAmount,12,2);
     if(!$isValidTotalAmount){
+        $errorMsg="AUTOVERIFACTU_ERROR_ValidateTotalAmount";
         return 0;
     } 
   
@@ -890,7 +929,7 @@ function autoverifactuValidateOperationType($operationType){
  * @param string tipo codigo de error 
  * @return boolean 1 correct or 0 incorrect
 */
-function autoverifactuValidateExemptionCode($errorCode){
+function autoverifactuValidateexeptionCode($errorCode){
 
      return ($errorCode==='E1' ||
             $errorCode==='E2' ||
@@ -898,8 +937,8 @@ function autoverifactuValidateExemptionCode($errorCode){
             $errorCode==='E4' ||
             $errorCode==='E5' ||
             $errorCode==='E6'||
-            $errorCode==='0' ||//en caso de que no haya exención
-            $errorCode==null//en caso de que no haya exención
+            $errorCode==='0' //en caso de que no haya exención
+
             );
 }
 

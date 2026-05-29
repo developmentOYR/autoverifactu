@@ -1921,7 +1921,7 @@ class pdf_Autoverifactu extends ModelePDFFactures
 			$qr_x = ($this->page_largeur - $qr_width) / 2;
 			$qr_y = 8;
 			
-			$pdf->SetXY($qr_x+1, $posy+3);
+			$pdf->SetXY($qr_x+1,3);
 			$pdf->SetFont('', '', $default_font_size );   
 
             $pdf->MultiCell(30, 10, 'QR tributario:', 0, 'C', 0, 1);
