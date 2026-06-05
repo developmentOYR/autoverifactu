@@ -918,10 +918,11 @@ function autoverifactuLinesToBreakdown($invoice)
 {
     $breakdown = array();
 
+    $defaultRegime = getDolGlobalString('AUTOVERIFACTU_DEFAULT_REGIME') ?: '01';
     foreach ($invoice->lines as $line) {
         $details = new stdClass();
         $details->taxType = getDolGlobalString('AUTOVERIFACTU_TAX') ?: '01';
-        $details->regimeType = $line->array_options['options_verifactu_regim_type'] ?: '01';
+        $details->regimeType = $line->array_options['options_verifactu_regim_type'] ?: $defaultRegime;
         $details->operationType = $line->array_options['options_verifactu_operation_type'] ?: 'S1';
         $details->excemptionCode = $line->array_options['options_verifactu_tax_excemption'] ?: null;
         $details->taxRate = number_format((float) $line->tva_tx, 2, '.', '');
