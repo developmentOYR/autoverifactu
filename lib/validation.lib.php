@@ -55,6 +55,7 @@ function autoverifactuIntegrityCheck($invoice)
     }
 
     $record = autoverifactuInvoiceToRecord($invoice);
+
     $immutable = autoverifactuRecordFromLog($blockedlog);
 
     if (!$record || !$immutable) {
@@ -109,7 +110,7 @@ function autoverifactuCheckInvoiceImmutableXML($invoice, $type = 'alta')
 
     $result = 0;
 
-    if (!in_array($type, array('alta', 'anulacion'), true)) {
+    if (!autoverifactuValidateRecordType($type)) {
         return $result;
     }
 
@@ -176,7 +177,7 @@ function autoverifactuInvoiceImmutableXMLPath($invoice, $type = 'alta')
     $file = $dir . '/' . $invoiceref . '-' . $type . '.xml';
     $hidden = $dir . '/.verifactu-' . $type . '.xml';
 
-    return [$file, $hidden];
+    return array($file, $hidden);
 }
 
 /**
@@ -264,12 +265,13 @@ function autoverifactuRecordFromLog($blockedlog, $recordType = 'alta')
         $line->tva_tx = $linedata->tva_tx;
         $line->total_ht = $linedata->total_ht;
         $line->total_tva = $linedata->total_tva;
+        $line->array_options['options_verifactu_operation_type'] = 'validate';
         $lines[] = $line;
     }
 
     $blocked->lines = $lines;
 
-    if ($objectdata->thirdparty) {
+    if (isset($objectdata->thirdparty) && $objectdata->thirdparty) {
         $blocked->thirdparty = new Societe($db);
         $blocked->thirdparty->nom = $objectdata->thirdparty->name;
         $blocked->thirdparty->idprof1 = $objectdata->thirdparty->idprof1u ?? null;
@@ -364,6 +366,11 @@ function autoverifactuEnabled()
  */
 function autoverifactuValidateRecord($record)
 {
+    $isValid = autoverifactuValidateRecordValues($record);
+    if (!$isValid) {
+        return 0;
+    }
+
     if (!isset($record->breakdown, $record->totalTaxAmount, $record->totalAmount)) {
         return 0;
     }
@@ -479,8 +486,256 @@ function autoverifactuIsPosInvoice($invoice)
         $source = new Facture($db);
         $source->fetch($invoice->fk_facture_source);
 
-        return $source->module_source === 'takepos';
+        $invoice = $source;
     }
 
     return $invoice->module_source === 'takepos';
+}
+
+/**
+ * Performs validation checks to the record values.
+ *
+ * @param stdClass $record Invoice record object.
+ *
+ * @return bool
+ */
+function autoverifactuValidateRecordValues($record)
+{
+    $isValid = (
+        autoverifactuValidateRecordType($record->type)
+        && autoverifactuValidateInvoiceType($record->invoiceType)
+        && autoverifactuValidateDate($record->dateOperation, false)
+        && autoverifactuValidateAlphaNumber($record->description, 500)
+        && autoverifactuValidateAlphaNumber($record->invoiceNumber, 60)
+        && autoverifactuValidateNumber($record->factureTotalAmount, 12, 2)
+        && autoverifactuValidateNumber($record->factureTtc, 12, 2)
+        && $record->factureTotalAmount === $record->factureTtc
+        && autoverifactuValidateCorrectiveType($record->correctiveType, false)
+        && autoverifactuValidateNumber($record->correctedBaseAmount, 12, 2, false)
+        && autoverifactuValidateNumber($record->correctedTaxAmount, 12, 2, false)
+        && autoverifactuValidateNumber($record->totalTaxAmount, 12, 2)
+        && autoverifactuValidateNumber($record->totalAmount, 12, 2)
+    );
+
+    if (!$isValid) {
+        return false;
+    }
+
+    $l = count($record->correctedInvoices);
+    for ($i = 0; $i < $l; $i++) {
+        // añadir logica
+    }
+
+    $l = count($record->replacedInvoices);
+    for ($i = 0; $i < $l; $i++) {
+        // añadir logica
+    }
+
+    foreach ($record->breakdown as $breakdownDetails) {
+        $isValid = (
+            autoverifactuValidateTaxType($breakdownDetails->taxType)
+            && autoverifactuValidateRegimeType($breakdownDetails->regimeType)
+            && autoverifactuValidateOperationType($breakdownDetails->operationType)
+            && autoverifactuValidateNumber($breakdownDetails->taxRate, 4, 2)
+            && autoverifactuValidateNumber($breakdownDetails->baseAmount, 12, 2)
+            && autoverifactuValidateExcemptionCode($breakdownDetails->excemptionCode, false)
+        );
+
+        if (!$isValid) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Record type validation.
+ *
+ * @param string $value     Record type code.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateRecordType($value, $required = true)
+{
+    $options = array('alta', 'anulación');
+    return in_array($value, $options, true) || !$required && empty($value);
+}
+
+/**
+ * Date format validation.
+ *
+ * @param string $value     Date string.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateDate($value, $required = true)
+{
+    $d = DateTime::createFromFormat('d-m-y', $value);
+    return $d && $d->format('d-m-y') === $value  || !$required && empty($value);
+}
+
+/**
+ * Invoice type code validation.
+ *
+ * @param string $value     Invoice type code.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateInvoiceType($value, $required = true)
+{
+    $options = array('F1', 'F2', 'F3', 'R1', 'R2', 'R3', 'R4', 'R5');
+    return in_array($value, $options, true) || !$required && empty($value);
+}
+
+/**
+ * Corrective type code validation.
+ *
+ * @param string $value     Corrective type code.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateCorrectiveType($value, $required = true)
+{
+    $options = array('R1', 'R2', 'R3', 'R4', 'R5');
+    return in_array($value, $options, true) || !$required && empty($value);
+}
+
+/**
+ * Alphanumeric string format validation.
+ *
+ * @param string $value     Characters string.
+ * @param int    $length    Maximum length constraint.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateAlphaNumber($value, $length, $required = true)
+{
+    if (!$required && empty($value)) {
+        return true;
+    }
+
+    $actualLength = mb_strlen($string, 'UTF-8');
+    if ($actualLength === 0 || $actualLength > intval($length)) {
+        return false;
+    }
+
+    return htmlspecialchars($value) === $value;
+}
+
+/**
+ * Alphanumeric string format validation.
+ *
+ * @param string $value     Characters string.
+ * @param int    $digits    Maximum number of digits constraint.
+ * @param int    $decimals  Maximum number of decimals constraint.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateNumber($value, $digits = 12, $decimals = 2, $required = true)
+{
+    if (!$required && empty($value)) {
+        return true;
+    }
+
+    if (!is_numeric($value)) {
+        return false;
+    }
+
+    $abs = strval(abs($value));
+
+    $parts = explode('.', $abs);
+    $integers = $parts[0];
+    $decimals = $parts[1] ?? '';
+
+    $maxIntegers = $digits - $decimals;
+    $intCount = strlen($integers);
+    $decCount = strlen($decimals);
+
+    return (
+        $intCount <= $maxIntegers
+        && $decCount <= $decimals
+        && $intCount + $decCount <= $digits
+    );
+}
+
+/**
+ * Tax type code validation.
+ *
+ * @param string $value     Tax type code.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateTaxType($value, $required = true)
+{
+    $options = array('01', '02', '03', '05');
+    return in_array($value, $options, true) || !$required && empty($value);
+}
+
+/**
+ * Regime type code validation.
+ *
+ * @param string $value     Regime type code.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateRegimeType($value, $required = true)
+{
+    $options = array(
+        '01',
+        '02',
+        '03',
+        '04',
+        '05',
+        '06',
+        '07',
+        '08',
+        '09',
+        '10',
+        '11',
+        '14',
+        '15',
+        '17',
+        '18',
+        '19',
+        '20',
+    );
+
+    return in_array($value, $options, true) || !$required && empty($value);
+}
+
+/**
+ * Operation type code validation.
+ *
+ * @param string $value     Operation type code.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateOperationType($value, $required = true)
+{
+    $options = array('S1', 'S2', 'N1', 'N2');
+    return in_array($value, $options, true) || !$required && empty($value);
+}
+
+/**
+ * Excemption code validation.
+ *
+ * @param string $value     Excemption code.
+ * @param boool  $required  Whether to treat the value as required or not.
+ *
+ * @return bool
+ */
+function autoverifactuValidateExcemptionCode($value, $required = true)
+{
+    $options = array('E1', 'E2', 'E3', 'E4', 'E5', 'E6');
+    return in_array($value, $options, true) || !$required && empty($value);
 }

@@ -29,8 +29,10 @@ require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php';
 require_once __DIR__ . '/validation.lib.php';
 
 /* Veri*Factu API URLs */
-define('VERIFACTU_BASE_URL', 'https://www1.agenciatributaria.gob.es'); // Production environment
-define('VERIFACTU_TEST_BASE_URL', 'https://prewww1.aeat.es'); // Test environment
+define('VERIFACTU_BASE_URL', 'https://www1.agenciatributaria.gob.es'); // Production API host
+define('VERIFACTU_TEST_BASE_URL', 'https://prewww1.aeat.es'); // >Test API host
+define('VERIFACTU_COLLATION_BASE_URL', 'https://www2.agenciatributaria.gob.es'); // Invoice collation host
+define('VERIFACTU_TEST_COLLATION_BASE_URL', 'https://prewww2.aeat.es'); // Invoice collation test host
 
 /* XML namespaces */
 define('AUTOVERIFACTU_SOAPENV_NS', 'http://schemas.xmlsoap.org/soap/envelope/');
@@ -167,8 +169,7 @@ function autoverifactuRegisterInvoice($invoice, $action)
         $result = $result && file_put_contents($hidden, $xml);
 
         if (!$result) {
-            dol_syslog('Error on verifactu request ' . print_r($e, true), LOG_ERR);
-            return -1;
+            throw new Exception('Unable to store XML invoice record', 500);
         } else {
             // Store invoice verifactu extrafields after record registration
             $invoice->array_options['options_verifactu_hash'] = $record->hash;
@@ -181,8 +182,7 @@ function autoverifactuRegisterInvoice($invoice, $action)
             $result = $invoice->insertExtraFields();
 
             if ($result <= 0) {
-                dol_syslog('Unable to update invoice extra fields', LOG_ERR);
-                return -1;
+                throw new Exception('Unable to update invoice extra fields', 500);
             }
 
             $parameters['record'] = $record;
@@ -197,6 +197,10 @@ function autoverifactuRegisterInvoice($invoice, $action)
     } catch (Error | Exception $e) {
         if (isset($xml) && $xml) {
             file_put_contents($file, $xml);
+        }
+
+        if (isset($record) && $record) {
+            autoverifactuSendInvoice($invoice, 'anulacion');
         }
 
         dol_syslog('Error on verifactu request ' . print_r($e, true), LOG_ERR);
@@ -217,14 +221,14 @@ function autoverifactuRegisterInvoice($invoice, $action)
  *
  * @throws Exception
  */
-function autoverifactuSendInvoice($invoice, $action, &$xml)
+function autoverifactuSendInvoice($invoice, $action, &$xml = '')
 {
     if (!autoverifactuSystemCheck()) {
         dol_syslog('Veri*Factu bridge does not pass system checks');
         return;
     }
 
-    $enabled = getDolGlobalString('AUTOVERIFACTU_ENABLED') == '1';
+    $enabled = getDolGlobalString('AUTOVERIFACTU_ENABLED') === '1';
 
     if (!$enabled) {
         dol_syslog('Veri*Factu bridge is not enabled');
@@ -233,7 +237,7 @@ function autoverifactuSendInvoice($invoice, $action, &$xml)
 
     $recordType = $action === 'BILL_VALIDATE' ? 'alta' : 'anulacion';
 
-    if ('anulacion' !== $recordType && autoverifactuIsInvoiceRecorded($invoice)) {
+    if ($recordType === 'alta' && autoverifactuIsInvoiceRecorded($invoice)) {
         dol_syslog(
             'Skip verifactu invoice registration because invoice #'
             . $invoice->id .
@@ -269,14 +273,61 @@ function autoverifactuSendInvoice($invoice, $action, &$xml)
     }
 
     global $mysoc;
-    $envelope = autoverifactuSoapEnvelope(
-        $record,
-        array(
-            'name' => $mysoc->nom,
-            'idprof1' => $mysoc->idprof1,
-        ),
+
+    $issuer = array(
+        'name' => $mysoc->nom,
+        'idprof1' => $mysoc->idprof1,
     );
 
+    $issuerIsValid = autoverifactuValidateIssuer($issuer);
+
+    if (!$issuerIsValid) {
+        throw new Exception('Inconsistent issuer data');
+    }
+
+    $envelope = $xml = autoverifactuSoapEnvelope(
+        $record,
+        $issuer,
+    );
+
+    $res = autoverifactuSoapRequest($envelope);
+
+    $status = $res->getElementsByTagName('EstadoRegistro')[0];
+
+    if ($status->nodeValue === 'Incorrecto') {
+        dol_syslog('# REJECTED SOAP ENVELOPE', LOG_DEBUG);
+        dol_syslog($envelope, LOG_DEBUG);
+        throw new Exception($res->saveXML(), 400);
+    } elseif ($status->nodeValue === 'AceptadoConErrores') {
+        $errCode = $res->getElementsByTagName('CodigoErrorRegistro')[0] ?? null;
+        $errMessage = $res->getElementsByTagName('DescripcionErrorRegistro')[0] ?? null;
+
+        if (!$errMessage || !$errCode) {
+            dol_syslog('# REJECTED SOAP ENVELOPE', LOG_DEBUG);
+            dol_syslog($envelope, LOG_DEBUG);
+            throw new Exception($res->saveXML(), 500);
+        }
+
+        $record->error = new stdClass();
+        $record->error->code = $errCode->nodeValue;
+        $record->error->message = $errMessage->nodeValue;
+    }
+
+    return $record;
+}
+
+/**
+ * Sends a verifactu SOAP envelope as a POST request to verifactu API.
+ *
+ * @param string       $body  Body of the request.
+ * @param int          $ttl   Time to live or request retries counter.
+ *
+ * @return DOMDocument        Request response.
+ *
+ * @throws Exception          On HTTP errors.
+ */
+function autoverifactuSoapRequest($body, $ttl = 3)
+{
     $testMode = (bool) getDolGlobalString('AUTOVERIFACTU_TEST_MODE');
     $base_url = $testMode ? VERIFACTU_TEST_BASE_URL : VERIFACTU_BASE_URL;
 
@@ -302,7 +353,7 @@ function autoverifactuSendInvoice($invoice, $action, &$xml)
         ),
     );
 
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $envelope);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
     $res = curl_exec($ch);
     dol_syslog('# RESPUESTA ALTA REGISTRO', LOG_DEBUG);
     dol_syslog($res, LOG_DEBUG);
@@ -312,9 +363,7 @@ function autoverifactuSendInvoice($invoice, $action, &$xml)
         $code = curl_errno($ch);
         curl_close($ch);
 
-        throw new Exception('cURL error: ' . $error, $code);
-    } else {
-        $xml = $envelope;
+        throw new Exception('cURL error:' . $error, $code);
     }
 
     curl_close($ch);
@@ -324,33 +373,27 @@ function autoverifactuSendInvoice($invoice, $action, &$xml)
     $faults = $doc->getElementsByTagName('Fault');
 
     if ($faults->count() > 0) {
-        dol_syslog('# REJECTED SOAP ENVELOPE', LOG_DEBUG);
-        dol_syslog($envelope, LOG_DEBUG);
-        throw new Exception($res, 400);
-    }
+        $fault = $faults[0];
+        $code = $fault->getElementsByTagName('faultcode')[0];
 
-    $status = $doc->getElementsByTagName('EstadoRegistro')[0];
-
-    if ($status->nodeValue === 'Incorrecto') {
-        dol_syslog('# REJECTED SOAP ENVELOPE', LOG_DEBUG);
-        dol_syslog($envelope, LOG_DEBUG);
-        throw new Exception($res, 400);
-    } elseif ($status->nodeValue === 'AceptadoConErrores') {
-        $errCode = $doc->getElementsByTagName('CodigoErrorRegistro')[0] ?? null;
-        $errMessage = $doc->getElementsByTagName('DescripcionErrorRegistro')[0] ?? null;
-
-        if (!$errMessage || !$errCode) {
-            dol_syslog('# REJECTED SOAP ENVELOPE', LOG_DEBUG);
-            dol_syslog($envelope, LOG_DEBUG);
-            throw new Exception($res, 500);
+        if (in_array($code, array('env:Server', 'sopaenv:Server'), true)) {
+            if ($ttl) {
+                // Retry on soapenv:Server errors with a limit of 3 attempts.
+                return autoverifactuSoapRequest($body, $ttl - 1);
+            } else {
+                // Exit if max retries is reached.
+                dol_syslog('# VERIFACTU API SERVICE UNAVAILABLE', LOG_DEBUG);
+                dol_syslog($res, LOG_DEBUG);
+                throw new Exception($res, 503);
+            }
         }
 
-        $record->error = new stdClass();
-        $record->error->code = $errCode->nodeValue;
-        $record->error->message = $errMessage->nodeValue;
+        dol_syslog('# REJECTED SOAP ENVELOPE', LOG_DEBUG);
+        dol_syslog($body, LOG_DEBUG);
+        throw new Exception($res, 400);
     }
 
-    return $record;
+    return $doc;
 }
 
 /**
@@ -446,18 +489,11 @@ function autoverifactuInvoiceToRecord($invoice, $recordType = 'alta')
             break;
         case Facture::TYPE_REPLACEMENT:
         case Facture::TYPE_CREDIT_NOTE:
-            // Factura rectificativa (Art 80.1 y 80.2 de la Ley 37/1992)
-            // $invoiceType = 'R1';
-            // Factura rectificativa por impago (Art 80.3 de la Ley 37/1992)
-            // $invoiceType = 'R2';
-            // Factura rectificativa (Art 80.4 de la Ley 37/1992)
-            // $invoiceType = 'R3';
             if (autoverifactuIsPosInvoice($invoice)) {
                 // Factura rectificativa simplificada
                 $invoiceType = 'R5';
             } else {
                 // Factura rectificativa corriente.
-                // $invoiceType = 'R4';
                 $invoiceType = $invoice->array_options['options_verifactu_rectification_type'] ?: 'R4';
             }
 
@@ -469,17 +505,35 @@ function autoverifactuInvoiceToRecord($invoice, $recordType = 'alta')
     $record = new stdClass();
     $record->type = $recordType;
 
-    $record->issuerName = trim($mysoc->nom);
+    if (!empty($invoice->array_options['options_verifactu_date_operation'])) {
+        $record->dateOperation = new DateTimeImmutable(
+            date('Y-m-d H:i:s', $invoice->array_options['options_verifactu_date_operation']),
+            new DateTimeZone('Europe/Madrid'),
+        );
+    } else {
+        $record->dateOperation = null;
+    }
+
+    $record->issuerName = htmlspecialchars(trim($mysoc->nom));
     $record->invoiceType = $invoiceType;
-    $record->description = 'Factura ' . $invoiceRef;
+    $record->description = 'Factura ' . htmlspecialchars($invoiceRef);
 
     $record->invoiceId = new stdClass();
     $record->invoiceId->issuerId = trim($mysoc->idprof1);
-    $record->invoiceId->invoiceNumber = $invoiceRef;
+    $record->invoiceId->invoiceNumber = htmlspecialchars($invoiceRef);
     $record->invoiceId->issueDate = new DateTimeImmutable(
         date('Y-m-d H:i:s', $invoice->array_options['options_verifactu_tms'] ?: $now),
         new DateTimeZone('Europe/Madrid'),
     );
+
+    // calculo el total y obtengo el total calculado para su posterior validación
+    $record->factureTotalAmount = number_format(
+        $invoice->total_ht + $invoice->total_tva + $invoice->total_localtax1,
+        2,
+        '.',
+        ''
+    );
+    $record->factureTtc = number_format($invoice->total_ttc, 2, '.', '');
 
     $record->recipients = array();
 
@@ -488,7 +542,7 @@ function autoverifactuInvoiceToRecord($invoice, $recordType = 'alta')
         $recipient = new stdClass();
 
         if ($thirdparty->country_code && $thirdparty->country_code !== 'ES') {
-            $recipient->name = trim($thirdparty->nom);
+            $recipient->name = htmlspecialchars(trim($thirdparty->nom));
             $recipient->country = $thirdparty->country_code;
 
             if ($thirdparty->tva_intra) {
@@ -505,7 +559,7 @@ function autoverifactuInvoiceToRecord($invoice, $recordType = 'alta')
                   * 07 Unregistered
             } */
         } else {
-            $recipient->name = trim($thirdparty->nom);
+            $recipient->name = htmlspecialchars(trim($thirdparty->nom));
             $recipient->nif = trim($thirdparty->idprof1);
         }
 
@@ -519,7 +573,7 @@ function autoverifactuInvoiceToRecord($invoice, $recordType = 'alta')
             true
         )
     ) {
-        if ($invoice->type == 1) {
+        if ($invoice->type === Facture::TYPE_REPLACEMENT) {
             // Fix by substitution
             $record->correctiveType = 'S';
         } else {
@@ -558,6 +612,9 @@ function autoverifactuInvoiceToRecord($invoice, $recordType = 'alta')
         if ($record->correctiveType === 'S') {
             $record->correctedBaseAmount = number_format($sourceInvoice->total_ht, 2, '.', '');
             $record->correctedTaxAmount = number_format($sourceInvoice->total_tva, 2, '.', '');
+        } else {
+            $record->correctedBaseAmount = null;
+            $record->correctedTaxAmount = null;
         }
     }
 
@@ -672,11 +729,15 @@ function autoverifactuRecordToXML($record, $xml = null)
         $recordEl->appendChild($xml->createElement('sum1:NombreRazonEmisor', htmlspecialchars($record->issuerName)));
         $recordEl->appendChild($xml->createElement('sum1:TipoFactura', $record->invoiceType));
 
-        if (($record->correctiveType ?? null) !== null) {
+        if ($record->dateOperation !== null) {
+            $recordEl->appendChild($xml->createElement('sum1:FechaOperacion', $record->dateOperation->format('d-m-Y')));
+        }
+
+        if ($record->correctiveType !== null) {
             $recordEl->appendChild($xml->createElement('sum1:TipoRectificativa', $record->correctiveType));
         }
 
-        if (count($record->correctedInvoices ?? [])) {
+        if (count($record->correctedInvoices)) {
             $correctedInvoices = $xml->createElement('sum1:FacturasRectificadas');
             $recordEl->appendChild($correctedInvoices);
 
@@ -693,7 +754,7 @@ function autoverifactuRecordToXML($record, $xml = null)
             }
         }
 
-        if (count($record->replacedInvoices ?? [])) {
+        if (count($record->replacedInvoices)) {
             $replacedInvoices = $xml->createElement('sum1:FacturasSustituidas');
             $recordEl->appendChild($replacedInvoices);
 
@@ -710,10 +771,7 @@ function autoverifactuRecordToXML($record, $xml = null)
             }
         }
 
-        if (
-            ($record->correctedBaseAmount ?? null) !== null
-            && ($record->correctedTaxAmount ?? null) !== null
-        ) {
+        if ($record->correctedBaseAmount !== null && $record->correctedTaxAmount !== null) {
             $importEl = $xml->createElement('sum1:ImporteRectificacion');
             $recordEl->appendChild($importEl);
 
@@ -723,7 +781,7 @@ function autoverifactuRecordToXML($record, $xml = null)
 
         $recordEl->appendChild($xml->createElement('sum1:DescripcionOperacion', htmlspecialchars($record->description)));
 
-        if (count($record->recipients ?? [])) {
+        if (count($record->recipients)) {
             $recipients = $xml->createElement('sum1:Destinatarios');
             $recordEl->appendChild($recipients);
 
@@ -748,18 +806,40 @@ function autoverifactuRecordToXML($record, $xml = null)
 
         $breakdown = $xml->createElement('sum1:Desglose');
         $recordEl->appendChild($breakdown);
-        foreach ($record->breakdown ?? [] as $details) {
+        foreach ($record->breakdown as $details) {
             $dEl = $xml->createElement('sum1:DetalleDesglose');
             $breakdown->appendChild($dEl);
 
             $dEl->appendChild($xml->createElement('sum1:Impuesto', $details->taxType));
-            if (in_array($details->taxType, array('01', '03'), true)) {
-                $dEl->appendChild($xml->createElement('sum1:ClaveRegimen', $details->regimeType));
+            $dEl->appendChild($xml->createElement('sum1:ClaveRegimen', $details->regimeType));
+
+            if ($details->exemptionCode) {
+                $dEl->appendChild($xml->createElement('sum1:OperacionExenta', $details->exemptionCode));
+            } else {
+                // Se indicará la calificación de la operación en caso de no existir código de exención.
+                $dEl->appendChild($xml->createElement('sum1:CalificacionOperacion', $details->operationType));
             }
-            $dEl->appendChild($xml->createElement('sum1:CalificacionOperacion', $details->operationType));
-            $dEl->appendChild($xml->createElement('sum1:TipoImpositivo', $details->taxRate));
+
+            // Se indicará el tipo impositivo y la cuota repercutida si no existe código de exención o
+            // la calificación de la operación no es N1 ni N2.
+            if (!($details->exemptionCode || in_array($details->operationType, array('N1', 'N2'), true))) {
+                $dEl->appendChild($xml->createElement('sum1:TipoImpositivo', $details->taxRate));
+                $dEl->appendChild($xml->createElement('sum1:CuotaRepercutida', $details->taxAmount));
+            }
+
             $dEl->appendChild($xml->createElement('sum1:BaseImponibleOimporteNoSujeto', $details->baseAmount));
-            $dEl->appendChild($xml->createElement('sum1:CuotaRepercutida', $details->taxAmount));
+
+            // Se indicará el recargo de equivalencia y el tipo en caso de existir
+            if (!$details->exemptionCode && $details->operationType === 'S1' && isset($details->equivalenceSurcharge)) {
+                $dEl->appendChild($xml->createElement(
+                    'sum1:TipoRecargoEquivalencia',
+                    $details->equivalenceSurcharge->type,
+                ));
+                $dEl->appendChild($xml->createElement(
+                    'sum1:CuotaRecargoEquivalencia',
+                    $details->equivalenceSurcharge->total,
+                ));
+            }
         }
 
         $recordEl->appendChild($xml->createElement('sum1:CuotaTotal', $record->totalTaxAmount));
@@ -836,20 +916,24 @@ function autoverifactuRecordToXML($record, $xml = null)
 */
 function autoverifactuLinesToBreakdown($invoice)
 {
-    $breakdown = [];
+    $breakdown = array();
 
+    $defaultRegime = getDolGlobalString('AUTOVERIFACTU_DEFAULT_REGIME') ?: '01';
     foreach ($invoice->lines as $line) {
         $details = new stdClass();
         $details->taxType = getDolGlobalString('AUTOVERIFACTU_TAX') ?: '01';
-        $details->regimeType = getDolGlobalString('AUTOVERIFACTU_REGIME') ?: '01';
-        // TODO: Handle operation types (S1, S2, S3, S4)
-        // NOTE: At this moment, autoverifactu only supports S1 operations (Operaciones sujetas y no exentas)
-        // NOTE: To modify this constant autoverifactu offers the `autoverifactu` hook.
-        $details->operationType = 'S1';
+        $details->regimeType = $line->array_options['options_verifactu_regim_type'] ?: $defaultRegime;
+        $details->operationType = $line->array_options['options_verifactu_operation_type'] ?: 'S1';
+        $details->excemptionCode = $line->array_options['options_verifactu_tax_excemption'] ?: null;
         $details->taxRate = number_format((float) $line->tva_tx, 2, '.', '');
         $details->baseAmount = number_format((float) $line->total_ht, 2, '.', '');
         $details->taxAmount = number_format((float) $line->total_tva, 2, '.', '');
-        $breakdown[] = $details;
+
+        if (!$details->exemptionCode && $details->operationType === 'S1' && $details->regimeType === '18') {
+            $details->equivalenceSurcharge = new stdClass();
+            $details->equivalenceSurcharge->type = number_format((float) $line->localtax1_tx, 2, '.', '') ;
+            $details->equivalenceSurcharge->total = number_format((float) $line->total_localtax1, 2, '.', '');
+        }
     }
 
     return $breakdown;
