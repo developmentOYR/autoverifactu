@@ -624,8 +624,8 @@ function autoverifactuValidateAlphaNumber($value, $length, $required = true)
     if (!$required && empty($value)) {
         return true;
     }
-
-    $actualLength = mb_strlen($string, 'UTF-8');
+	// la variable $string no existe es $value
+    $actualLength = mb_strlen($value, 'UTF-8');
     if ($actualLength === 0 || $actualLength > intval($length)) {
         return false;
     }
