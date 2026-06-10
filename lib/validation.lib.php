@@ -515,6 +515,8 @@ function autoverifactuValidateRecordValues($record)
         && autoverifactuValidateNumber($record->factureTotalAmount, 12, 2)
         && autoverifactuValidateNumber($record->factureTtc, 12, 2)
         && $record->factureTotalAmount === $record->factureTtc
+ 		//Estás pasando la variable tipo de factura correctiva I o S (Diferencia o Sustitución) 
+		//la función debe de validar si es de tipo S o I 
         && autoverifactuValidateCorrectiveType($record->correctiveType, false)
         && autoverifactuValidateNumber($record->correctedBaseAmount, 12, 2, false)
         && autoverifactuValidateNumber($record->correctedTaxAmount, 12, 2, false)
@@ -606,7 +608,8 @@ function autoverifactuValidateInvoiceType($value, $required = true)
  */
 function autoverifactuValidateCorrectiveType($value, $required = true)
 {
-    $options = array('R1', 'R2', 'R3', 'R4', 'R5');
+    //factura correctiva I o S (Diferencia o Sustitución )
+    $options = array('I', 'S');
     return in_array($value, $options, true) || !$required && empty($value);
 }
 
