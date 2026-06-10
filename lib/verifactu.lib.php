@@ -828,10 +828,19 @@ function autoverifactuRecordToXML($record, $xml = null)
                 $dEl->appendChild($xml->createElement('sum1:CalificacionOperacion', $details->operationType));
             }
 
+			// Se indicará el tipo impositivo y la cuota repercutida si no existe código de exención o
+            // la calificación de la operación no es N1 ni N2.
+			
+			//hay que poner en este order los campos TipoImpositivo, BaseImponibleOimporteNoSujeto , CuotaRepercutida
+            if (!($details->exemptionCode || in_array($details->operationType, array('N1', 'N2'), true))) {
+                $dEl->appendChild($xml->createElement('sum1:TipoImpositivo', $details->taxRate));
+            }
+
+			$dEl->appendChild($xml->createElement('sum1:BaseImponibleOimporteNoSujeto', $details->baseAmount));
+			
             // Se indicará el tipo impositivo y la cuota repercutida si no existe código de exención o
             // la calificación de la operación no es N1 ni N2.
             if (!($details->exemptionCode || in_array($details->operationType, array('N1', 'N2'), true))) {
-                $dEl->appendChild($xml->createElement('sum1:TipoImpositivo', $details->taxRate));
                 $dEl->appendChild($xml->createElement('sum1:CuotaRepercutida', $details->taxAmount));
             }
 
