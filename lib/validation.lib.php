@@ -269,6 +269,7 @@ function autoverifactuRecordFromLog($blockedlog, $recordType = 'alta')
         $line->tva_tx = $linedata->tva_tx;
         $line->total_ht = $linedata->total_ht;
         $line->total_tva = $linedata->total_tva;
+		//si introducimos este valor hay que añadirlo en la funcion de validación
         $line->array_options['options_verifactu_operation_type'] = 'validate';
         $lines[] = $line;
     }
@@ -751,7 +752,8 @@ function autoverifactuValidateRegimeType($value, $required = true)
  */
 function autoverifactuValidateOperationType($value, $required = true)
 {
-    $options = array('S1', 'S2', 'N1', 'N2');
+	//si usas la el valor validate en la funcion autoverifactuRecordFromLog tenemos que añadirlo tambien en la validación
+    $options = array('S1', 'S2', 'N1', 'N2','validate' );
     return in_array($value, $options, true) || !$required && empty($value);
 }
 
